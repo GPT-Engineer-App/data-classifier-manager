@@ -1,0 +1,89 @@
+import os
+import csv
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# OpenAI API configuration
+api_key = os.getenv("OPENAI_API_KEY")
+api_url = "https://api.openai.com/v1/classifications"
+
+# Function to check if a directory exists and create it if not
+def ensure_directory(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+# Function to classify data using OpenAI API
+def classify_data(text):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    data = {
+        "model": "text-davinci-002",
+        "query": text,
+        "examples": [
+            ["This is a positive sentiment", "Positive"],
+            ["This is a negative sentiment", "Negative"],
+            ["This is a neutral sentiment", "Neutral"]
+        ]
+    }
+    response = requests.post(api_url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()["label"]
+    else:
+        raise Exception(f"Error classifying data: {response.text}")
+
+# Function to process and categorize data
+def process_data(input_file, output_directory):
+    ensure_directory(output_directory)
+
+    with open(input_file, "r") as file:
+        reader = csv.reader(file)
+        header = next(reader)
+        
+        # Create output files for each category
+        output_files = {
+            "Positive": open(os.path.join(output_directory, "positive.csv"), "w"),
+            "Negative": open(os.path.join(output_directory, "negative.csv"), "w"),
+            "Neutral": open(os.path.join(output_directory, "neutral.csv"), "w")
+        }
+        output_writers = {
+            category: csv.writer(file) for category, file in output_files.items()
+        }
+        
+        # Write header to output files
+        for writer in output_writers.values():
+            writer.writerow(header)
+        
+        # Process each row of data
+        for row in reader:
+            text = row[0]  # Assuming the text is in the first column
+            try:
+                category = classify_data(text)
+                output_writers[category].writerow(row)
+            except Exception as e:
+                print(f"Error processing row: {row}")
+                print(f"Error message: {str(e)}")
+    
+    # Close output files
+    for file in output_files.values():
+        file.close()
+
+# Main function
+def main():
+    input_file = "data.csv"
+    output_directory = "classified_data"
+    
+    try:
+        process_data(input_file, output_directory)
+        print("Data processing completed successfully.")
+    except FileNotFoundError:
+        print(f"Input file '{input_file}' not found.")
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+
+if __name__ == "__main__":
+    main()
